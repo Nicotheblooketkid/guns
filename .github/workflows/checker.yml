@@ -1,0 +1,36 @@
+name: Guns.lol Checker
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    env:
+      WEBHOOK_AVAILABLE: ${{ secrets.WEBHOOK_AVAILABLE }}
+      WEBHOOK_TAKEN: ${{ secrets.WEBHOOK_TAKEN }}
+      WEBHOOK_BANNED: ${{ secrets.WEBHOOK_BANNED }}
+      WEBHOOK_RATE: ${{ secrets.WEBHOOK_RATE }}
+      MODE: wordlist
+      WORDLIST: newwords.txt
+      PAGES: "3"
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      - name: Run checker
+        run: python main.py
