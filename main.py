@@ -2,6 +2,7 @@ import asyncio
 import os
 import random
 import string
+import time
 import aiohttp
 from playwright.async_api import async_playwright
 
@@ -9,6 +10,10 @@ BASE_URL = "https://guns.lol/{}"
 
 CHARS = string.ascii_lowercase + string.digits
 RATE_RETRY_DELAY = 120
+
+# Run for 5.5 hours max so GitHub Actions doesn't kill us mid-run
+MAX_RUNTIME_SECONDS = 5.5 * 60 * 60
+START_TIME = time.time()
 
 # -------- ENV -------- #
 WEBHOOK_AVAILABLE = os.getenv("WEBHOOK_AVAILABLE")
@@ -62,7 +67,7 @@ async def check_username(page, username, session):
 
         await page.wait_for_timeout(300)
 
-        # ---- RATE LIMIT (still body-based) ----
+        # ---- RATE LIMIT ----
         body_text = (await page.inner_text("body")).lower()
         if "too many requests" in body_text:
             await send_live(
@@ -73,7 +78,7 @@ async def check_username(page, username, session):
             await asyncio.sleep(RATE_RETRY_DELAY)
             return
 
-        # ---- READ STATUS FROM H1 ONLY ----
+        # ---- READ STATUS FROM H1 ----
         try:
             h1_text = (await page.locator("h1").first.inner_text()).strip().lower()
         except:
@@ -138,39 +143,65 @@ async def send_summary(url, title, names, color):
             if resp.status >= 400:
                 print(f"[SUMMARY ERROR {resp.status}] {await resp.text()}")
 
-# -------- MAIN -------- #
-async def main():
+# -------- LOAD USERNAMES -------- #
+def load_usernames():
     if MODE == "2c":
-        usernames = [
+        return [
             "".join(random.choice(CHARS) for _ in range(2))
             for _ in range(AMOUNT)
         ]
-
     elif MODE == "3c":
-        usernames = [
+        return [
             "".join(random.choice(CHARS) for _ in range(3))
             for _ in range(AMOUNT)
         ]
-
     elif MODE == "wordlist":
         wordlist_path = os.getenv("WORDLIST")
         if not wordlist_path or not os.path.exists(wordlist_path):
             print("WORDLIST file not found")
-            return
-
+            return []
         with open(wordlist_path, "r", encoding="utf-8") as f:
-            usernames = [
-                line.strip()
-                for line in f
-                if line.strip()
-            ]
+            return [line.strip() for line in f if line.strip()]
     else:
         print("Invalid MODE")
-        return
+        return []
 
+# -------- RUN ONE CYCLE -------- #
+async def run_cycle(usernames, browser, session, cycle):
     queue = asyncio.Queue()
     for u in usernames:
         queue.put_nowait(u)
+
+    pages = [
+        await browser.new_page(user_agent=USER_AGENT)
+        for _ in range(CONCURRENCY)
+    ]
+
+    workers = [
+        asyncio.create_task(worker(f"W{i}", queue, pages[i], session))
+        for i in range(CONCURRENCY)
+    ]
+
+    await queue.join()
+
+    for w in workers:
+        w.cancel()
+
+    for page in pages:
+        await page.close()
+
+    print(f"\n--- CYCLE {cycle} DONE | Available: {len(available_list)} | Banned: {len(banned_list)} | Taken: {len(taken_list)} ---")
+
+# -------- MAIN -------- #
+async def main():
+    usernames = load_usernames()
+    if not usernames:
+        return
+
+    print(f"Loaded {len(usernames)} usernames | {CONCURRENCY} pages")
+    print(f"Will run for up to 5.5 hours then stop (GitHub Actions reschedules automatically)\n")
+
+    cycle = 1
 
     async with aiohttp.ClientSession() as session:
         async with async_playwright() as p:
@@ -179,27 +210,32 @@ async def main():
                 args=["--no-sandbox", "--disable-dev-shm-usage"]
             )
 
-            pages = [
-                await browser.new_page(user_agent=USER_AGENT)
-                for _ in range(CONCURRENCY)
-            ]
+            while True:
+                # Stop before GitHub Actions 6hr limit
+                elapsed = time.time() - START_TIME
+                if elapsed > MAX_RUNTIME_SECONDS:
+                    print(f"\nApproaching 6hr limit — stopping cleanly. GitHub Actions will restart shortly.")
+                    break
 
-            workers = [
-                asyncio.create_task(worker(f"W{i}", queue, pages[i], session))
-                for i in range(CONCURRENCY)
-            ]
+                print(f"--- CYCLE {cycle} | Elapsed: {int(elapsed//60)}m ---\n")
+                await run_cycle(usernames, browser, session, cycle)
 
-            await queue.join()
+                # Send summaries every 5 cycles to avoid spam
+                if cycle % 5 == 0:
+                    await send_summary(WEBHOOK_AVAILABLE, "✅ Available Names", available_list, 0x57F287)
+                    await send_summary(WEBHOOK_TAKEN, "❌ Taken Names", taken_list[-50:], 0xED4245)
+                    await send_summary(WEBHOOK_BANNED, "⚠️ Banned Names", banned_list, 0xFEE75C)
 
-            for w in workers:
-                w.cancel()
+                cycle += 1
+                print(f"Restarting in 5 seconds...\n")
+                await asyncio.sleep(5)
 
             await browser.close()
 
-    # ---- FINAL SUMMARIES ----
-    await send_summary(WEBHOOK_AVAILABLE, "✅ Available Names", available_list, 0x57F287)
-    await send_summary(WEBHOOK_TAKEN, "❌ Taken Names", taken_list, 0xED4245)
-    await send_summary(WEBHOOK_BANNED, "⚠️ Banned Names", banned_list, 0xFEE75C)
+    # Final summary when stopping
+    await send_summary(WEBHOOK_AVAILABLE, "✅ Available Names (Final)", available_list, 0x57F287)
+    await send_summary(WEBHOOK_TAKEN, "❌ Taken Names (Final)", taken_list[-50:], 0xED4245)
+    await send_summary(WEBHOOK_BANNED, "⚠️ Banned Names (Final)", banned_list, 0xFEE75C)
 
     print("Done.")
 
