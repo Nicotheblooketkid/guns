@@ -21,6 +21,12 @@ WORDLIST = os.getenv("WORDLIST", "words.txt")
 AMOUNT = int(os.getenv("AMOUNT", "5000"))
 CONCURRENCY = int(os.getenv("PAGES", "3"))
 
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36"
+)
+
 # -------- WEBHOOK -------- #
 async def send_live(webhook, session, msg, allow_mentions=False):
     if not webhook:
