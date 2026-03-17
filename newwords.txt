@@ -7,7 +7,6 @@ ale
 all
 ant
 ape
-testycuh
 arc
 arm
 art
