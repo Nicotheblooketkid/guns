@@ -89,7 +89,7 @@ async def check_username(page, username, session):
             await send_live(
                 WEBHOOK_AVAILABLE,
                 session,
-                f"✅ AVAILABLE: `{username}` <@&1466285392717414400>",
+                f"✅ AVAILABLE: `{username}` @everyone",
                 allow_mentions=True
             )
             return
