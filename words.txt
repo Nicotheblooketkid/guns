@@ -3,7 +3,6 @@ aa
 aaa
 aaaa
 aaaaa
-testycuh
 b
 bb
 bbb
@@ -875,7 +874,6 @@ make
 male
 mall
 many
-maph
 mark
 mars
 mass
@@ -982,7 +980,6 @@ rate
 read
 real
 reel
-rekt
 rent
 rest
 rice
@@ -1111,7 +1108,6 @@ upon
 urge
 used
 user
-uwus
 vape
 vary
 vast
@@ -1224,7 +1220,6 @@ begin
 being
 below
 bench
-berth
 birth
 black
 blade
@@ -1324,7 +1319,6 @@ drink
 drive
 droid
 drove
-dudes
 early
 earth
 eight
@@ -1703,7 +1697,6 @@ wound
 write
 wrong
 wrote
-xboxx
 yield
 young
 youth
@@ -2211,7 +2204,7 @@ attitude
 authority
 awareness
 backpack
-barelyyy
+barely
 baseline
 bathroom
 behavior
