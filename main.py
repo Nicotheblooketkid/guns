@@ -2,12 +2,8 @@ import asyncio
 import os
 import random
 import string
-import time
 import aiohttp
 from playwright.async_api import async_playwright
-
-MAX_RUNTIME = 5.5 * 60 * 60
-START_TIME = time.time()
 
 BASE_URL = "https://guns.lol/{}"
 
@@ -21,9 +17,9 @@ WEBHOOK_BANNED = os.getenv("WEBHOOK_BANNED")
 WEBHOOK_RATE = os.getenv("WEBHOOK_RATE")
 
 MODE = os.getenv("MODE", "wordlist")
-WORDLIST = os.getenv("WORDLIST", "newwords.txt")
-AMOUNT = int(os.getenv("AMOUNT", "10000"))
-CONCURRENCY = int(os.getenv("PAGES", "3"))
+WORDLIST = os.getenv("WORDLIST", "words.txt")
+AMOUNT = int(os.getenv("AMOUNT", "5000"))
+CONCURRENCY = int(os.getenv("PAGES", "5"))
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -89,7 +85,7 @@ async def check_username(page, username, session):
             await send_live(
                 WEBHOOK_AVAILABLE,
                 session,
-                f"✅ AVAILABLE: `{username}` @everyone",
+                f"✅ AVAILABLE: `{username}` <@&1466285392717414400>",
                 allow_mentions=True
             )
             return
@@ -149,66 +145,62 @@ async def main():
             "".join(random.choice(CHARS) for _ in range(2))
             for _ in range(AMOUNT)
         ]
+
     elif MODE == "3c":
         usernames = [
             "".join(random.choice(CHARS) for _ in range(3))
             for _ in range(AMOUNT)
         ]
+
     elif MODE == "wordlist":
         wordlist_path = os.getenv("WORDLIST")
         if not wordlist_path or not os.path.exists(wordlist_path):
             print("WORDLIST file not found")
             return
+
         with open(wordlist_path, "r", encoding="utf-8") as f:
-            usernames = [line.strip() for line in f if line.strip()]
+            usernames = [
+                line.strip()
+                for line in f
+                if line.strip()
+            ]
     else:
         print("Invalid MODE")
         return
 
-    print(f"Loaded {len(usernames)} usernames | {CONCURRENCY} pages | running up to 5.5hrs")
+    queue = asyncio.Queue()
+    for u in usernames:
+        queue.put_nowait(u)
 
-    cycle = 1
     async with aiohttp.ClientSession() as session:
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
                 args=["--no-sandbox", "--disable-dev-shm-usage"]
             )
+
             pages = [
                 await browser.new_page(user_agent=USER_AGENT)
                 for _ in range(CONCURRENCY)
             ]
 
-            while True:
-                elapsed = time.time() - START_TIME
-                if elapsed > MAX_RUNTIME:
-                    print("Approaching 6hr limit — stopping cleanly.")
-                    break
+            workers = [
+                asyncio.create_task(worker(f"W{i}", queue, pages[i], session))
+                for i in range(CONCURRENCY)
+            ]
 
-                print(f"\n--- CYCLE {cycle} | Elapsed: {int(elapsed // 60)}m ---")
-                random.shuffle(usernames)
+            await queue.join()
 
-                queue = asyncio.Queue()
-                for u in usernames:
-                    queue.put_nowait(u)
-
-                workers = [
-                    asyncio.create_task(worker(f"W{i}", queue, pages[i], session))
-                    for i in range(CONCURRENCY)
-                ]
-
-                await queue.join()
-                for w in workers:
-                    w.cancel()
-
-                cycle += 1
-                await asyncio.sleep(5)
+            for w in workers:
+                w.cancel()
 
             await browser.close()
 
+    # ---- FINAL SUMMARIES ----
     await send_summary(WEBHOOK_AVAILABLE, "✅ Available Names", available_list, 0x57F287)
     await send_summary(WEBHOOK_TAKEN, "❌ Taken Names", taken_list, 0xED4245)
     await send_summary(WEBHOOK_BANNED, "⚠️ Banned Names", banned_list, 0xFEE75C)
+
     print("Done.")
 
 if __name__ == "__main__":
